@@ -54,7 +54,6 @@ local function getNeededEP()
 end
 
 --// Main GRADIENT PRESETS
--- (no change here)
 local gradientPresets = {
     ["Dark Blue"] = {
         {0, Color3.fromRGB(40, 60, 100)},
@@ -227,9 +226,6 @@ end)
 frame:GetPropertyChangedSignal("Position"):Connect(syncBorderToFrame)
 
 --// MOBILE SHOW/HIDE TOGGLE
--- Small floating pill button, independent of the main panel, that can be
--- dragged anywhere on screen and tapped to show/hide the whole GUI.
--- Handy on phones where the panel can cover gameplay/UI you need to tap.
 local toggleButton = Instance.new("TextButton")
 toggleButton.Name = "ToggleGUIButton"
 toggleButton.Parent = gui
@@ -264,8 +260,6 @@ local function setGUIVisible(visible)
     toggleButton.Text = visible and "✕" or "≡"
 end
 
--- Drag the toggle button itself (mouse + touch), tracking movement so a
--- drag doesn't also register as a tap.
 local toggleDragging = false
 local toggleDragStart, toggleStartPos, toggleDragInput
 local toggleMoved = false
@@ -396,8 +390,6 @@ local function setGUIGradientPreset(newPreset)
     borderGradient.Color = ColorSequence.new(keypoints)
 end
 
--- (no change in createToggle, createDropdown etc.)
-
 local function createToggle(name, yPos, parent)
     local toggle = Instance.new("TextButton")
     toggle.Parent = parent
@@ -519,7 +511,6 @@ local function createDropdown(name, options, yPos, parent)
 end
 
 --=== TAB CONTENTS ===--
--- (no change for content initialization, only gradients were changed above)
 local combatTab = tabContainers["Combat"]
 local combatEnabled = createToggle("Auto Combat", 10, combatTab)
 local skipEnabled = createToggle("Auto Skip Turn", 52, combatTab)
@@ -686,7 +677,9 @@ for name, _ in pairs(gradientPresets) do
 end
 local colorDropdown = createDropdown("Color", colorPresetsList, 10, settingsTab)
 local antiAFKEnabled, antiAFKToggle = createToggle("Anti-AFK", 52, settingsTab)
-local antiAFKConnection
+
+-- NEW: Anti-Spam toggle (kills "EVOLUTION FAILED" notification spam that causes lag)
+local antiSpamEnabled, antiSpamToggle = createToggle("Anti-Spam (Lag Fix)", 94, settingsTab)
 
 task.spawn(function()
     local lastPreset = selectedGradientPreset
@@ -700,6 +693,7 @@ task.spawn(function()
     end
 end)
 
+local antiAFKConnection
 task.spawn(function()
     local wasEnabled = false
     while true do
@@ -720,6 +714,54 @@ task.spawn(function()
                 antiAFKConnection:Disconnect()
                 antiAFKConnection = nil
             end
+            wasEnabled = false
+        end
+        task.wait(0.2)
+    end
+end)
+
+-- NEW: Anti-Spam watcher, toggle-controlled, connects/disconnects cleanly
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local antiSpamConnection
+
+local function startAntiSpam()
+    if antiSpamConnection then return end
+    antiSpamConnection = PlayerGui.DescendantAdded:Connect(function(inst)
+        if inst:IsA("TextLabel") or inst:IsA("TextButton") then
+            task.spawn(function()
+                task.wait() -- give it a frame to populate .Text
+                local ok, text = pcall(function() return inst.Text end)
+                if ok and text and text:find("EVOLUTION FAILED") then
+                    -- climb up a couple levels to grab the whole notification card, not just the label
+                    local card = inst
+                    for i = 1, 3 do
+                        if card.Parent and card.Parent ~= PlayerGui then
+                            card = card.Parent
+                        end
+                    end
+                    card:Destroy()
+                end
+            end)
+        end
+    end)
+end
+
+local function stopAntiSpam()
+    if antiSpamConnection then
+        antiSpamConnection:Disconnect()
+        antiSpamConnection = nil
+    end
+end
+
+task.spawn(function()
+    local wasEnabled = false
+    while true do
+        local enabled = antiSpamEnabled()
+        if enabled and not wasEnabled then
+            startAntiSpam()
+            wasEnabled = true
+        elseif not enabled and wasEnabled then
+            stopAntiSpam()
             wasEnabled = false
         end
         task.wait(0.2)
@@ -866,7 +908,6 @@ task.spawn(function()
     local t = 0
     while true do
         t += 0.015
-        -- Animate gradient colors in a subtle way for mainGradient/topGradient/tabGradient
         local function shiftPresetColors(preset, speed, phase)
             local keypoints = {}
             for i, data in ipairs(preset) do
